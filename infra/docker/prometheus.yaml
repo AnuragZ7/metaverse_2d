@@ -1,0 +1,7 @@
+global:
+  scrape_interval: 10s
+
+scrape_configs:
+  - job_name: skyscope-ws
+    static_configs:
+      - targets: [ws-1:8000, ws-2:8000, ws-3:8000]

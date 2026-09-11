@@ -4,6 +4,7 @@ export type UserEntry = { x: number; y: number; userId: string };
 export type UserMap = Map<string, UserEntry>;
 
 export interface ChatMessage {
+  id?: string;
   userId: string;
   message: string;
   timestamp: number;
@@ -106,7 +107,11 @@ export const useOfficeStore = create<OfficeState>((set, get) => ({
 
   clearUsers: () => set({ users: new Map() }),
 
-  addMessage: (msg) => set((s) => ({ messages: [...s.messages, msg] })),
+  addMessage: (msg) => set((s) => ({
+    messages: msg.id && s.messages.some((existing) => existing.id === msg.id)
+      ? s.messages
+      : [...s.messages, msg],
+  })),
   clearMessages: () => set({ messages: [] }),
 
   setInCallWith: (userId) => set({ inCallWith: userId }),

@@ -1,0 +1,89 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: skyscope-ws
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: skyscope-ws
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: skyscope-ws
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: /metrics
+        prometheus.io/port: "8000"
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: websocket
+          image: ghcr.io/your-account/skyscope-ws:replace-me
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http-ws
+              containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: skyscope-ws-config
+          env:
+            - name: INSTANCE_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: skyscope-secrets
+                  key: database-url
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: skyscope-secrets
+                  key: redis-url
+            - name: JWT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: skyscope-secrets
+                  key: jwt-password
+          startupProbe:
+            httpGet:
+              path: /readyz
+              port: http-ws
+            periodSeconds: 2
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http-ws
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 2
+          livenessProbe:
+            httpGet:
+              path: /livez
+              port: http-ws
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 768Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault

@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { spaceAPI } from '@/lib/api';
+import { createEventId, ResilientWebSocket } from '@/lib/resilientWebSocket';
 import { Input } from '@/components/ui/input';
 import PeerService from './service/peer';
 import { useOfficeStore } from '@/store/officeStore';
@@ -45,7 +46,8 @@ const Office = () => {
   const navigate = useNavigate();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const miniMapRef = useRef<HTMLCanvasElement | null>(null);
-  const wsRef = useRef<WebSocket | null>(null);
+  const wsRef = useRef<ResilientWebSocket | null>(null);
+
   const [chatOpen, setChatOpen] = useState(false);
   const [chatInput, setChatInput] = useState('');
 
@@ -107,45 +109,24 @@ const Office = () => {
       })
       .catch((err: any) => console.error('Error fetching space:', err));
 
-    const ws = new WebSocket(webSocketUrl);
+    const ws = new ResilientWebSocket({
+      url: webSocketUrl,
+      spaceId,
+      token,
+      position: () => {
+        const savedPosStr = localStorage.getItem(`office_pos_${spaceId}`);
+        try {
+          return savedPosStr ? JSON.parse(savedPosStr) : null;
+        } catch {
+          return null;
+        }
+      },
+      onConnectionChange: setWsConnected,
+      onMessage: handleWsMessage,
+      onError: (error) => console.error('ws error', error),
+    });
     wsRef.current = ws;
-
-    ws.onopen = () => {
-      setWsConnected(true);
-      localStorage.setItem('activeSpaceId', spaceId);
-      const savedPosStr = localStorage.getItem(`office_pos_${spaceId}`);
-      let savedPos: { x?: number; y?: number } | null = null;
-      try {
-        if (savedPosStr) savedPos = JSON.parse(savedPosStr);
-      } catch (_e) { /* ignore */ }
-
-      ws.send(
-        JSON.stringify({
-          type: 'join',
-          payload: {
-            spaceId,
-            token,
-            x: savedPos?.x,
-            y: savedPos?.y,
-          },
-        })
-      );
-    };
-
-    ws.onmessage = (ev: MessageEvent) => {
-      try {
-        handleWsMessage(JSON.parse(ev.data));
-      } catch (err) {
-        console.error('invalid ws message', err);
-      }
-    };
-
-    ws.onclose = () => {
-      setWsConnected(false);
-      console.log('websocket closed');
-    };
-
-    ws.onerror = (e) => console.error('ws error', e);
+    localStorage.setItem('activeSpaceId', spaceId);
 
     return () => {
       ws.close();
@@ -255,6 +236,7 @@ const Office = () => {
         const msgUserId = message.payload.userId || 'unknown';
         const msgText = message.payload.message;
         addMessage({
+          id: message.eventId,
           userId: msgUserId,
           message: msgText,
           timestamp: message.payload.timestamp || Date.now(),
@@ -269,6 +251,14 @@ const Office = () => {
         }
         break;
       }
+
+      case 'resync-required':
+        toast({
+          title: 'Some chat history is unavailable',
+          description: 'The reconnect window was exceeded. Live updates will continue.',
+          variant: 'destructive',
+        });
+        break;
 
       case 'user-left':
         removeUser(String(message.payload.userId));
@@ -406,10 +396,12 @@ const Office = () => {
     const cu = useOfficeStore.getState().currentUser;
     if (!cu || !spaceId || !text.trim()) return;
     const ts = Date.now();
-    addMessage({ userId: cu.userId || '', message: text, timestamp: ts });
+    const eventId = createEventId();
+    addMessage({ id: eventId, userId: cu.userId || '', message: text, timestamp: ts });
     wsRef.current?.send(
       JSON.stringify({
         type: 'groupChat',
+        eventId,
         payload: { userId: cu.userId, message: text, groupId: spaceId, timestamp: ts },
       })
     );

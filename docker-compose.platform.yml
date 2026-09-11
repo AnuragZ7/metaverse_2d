@@ -1,0 +1,114 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: metaverse
+      POSTGRES_USER: metaverse
+      POSTGRES_PASSWORD: local-development-only
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U metaverse]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7.4-alpine
+    command: [redis-server, --appendonly, "yes", --appendfsync, everysec]
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - redis-data:/data
+
+  schema:
+    build:
+      context: .
+      dockerfile: infra/docker/http.Dockerfile
+    command: [pnpm, --filter, http, exec, prisma, db, push, --skip-generate]
+    environment:
+      DATABASE_URL: postgresql://metaverse:local-development-only@postgres:5432/metaverse
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  http:
+    build:
+      context: .
+      dockerfile: infra/docker/http.Dockerfile
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      JWT_PASSWORD: local-shared-jwt-secret
+      DATABASE_URL: postgresql://metaverse:local-development-only@postgres:5432/metaverse
+    ports: ["3000:3000"]
+    depends_on:
+      schema:
+        condition: service_completed_successfully
+
+  ws-1: &websocket
+    build:
+      context: .
+      dockerfile: infra/docker/ws.Dockerfile
+    environment: &websocket-environment
+      NODE_ENV: production
+      PORT: 8000
+      JWT_PASSWORD: local-shared-jwt-secret
+      DATABASE_URL: postgresql://metaverse:local-development-only@postgres:5432/metaverse
+      REDIS_URL: redis://redis:6379
+      DEDUP_TTL_MS: "600000"
+      WS_SYNC_BUFFER_MAX_EVENTS: "1000"
+      ALLOW_TEST_SPACES: "true"
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://otel-collector:4318/v1/traces
+    depends_on: &websocket-dependencies
+      redis:
+        condition: service_healthy
+      schema:
+        condition: service_completed_successfully
+
+  ws-2:
+    <<: *websocket
+    environment:
+      <<: *websocket-environment
+      INSTANCE_ID: ws-2
+
+  ws-3:
+    <<: *websocket
+    environment:
+      <<: *websocket-environment
+      INSTANCE_ID: ws-3
+
+  gateway:
+    image: nginx:1.27-alpine
+    ports: ["8000:8000"]
+    volumes:
+      - ./infra/docker/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on: [ws-1, ws-2, ws-3]
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.120.0
+    command: [--config=/etc/otelcol-contrib/config.yaml]
+    volumes:
+      - ./infra/docker/otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro
+    depends_on: [jaeger]
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.64.0
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports: ["16686:16686"]
+
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    command: [--config.file=/etc/prometheus/prometheus.yml]
+    volumes:
+      - ./infra/docker/prometheus.yaml:/etc/prometheus/prometheus.yml:ro
+    ports: ["9090:9090"]
+
+volumes:
+  postgres-data:
+  redis-data:

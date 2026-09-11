@@ -2,6 +2,16 @@
 
 > **A cutting-edge real-time 2D virtual office platform** enabling spatial presence, interactive collaboration, instant messaging, and peer-to-peer voice communication.
 
+## Distributed real-time platform
+
+The WebSocket layer supports horizontal replicas through Redis Pub/Sub and Streams, heartbeat presence leases, resumable sessions, idempotent event IDs, structured logs, OpenTelemetry traces, Prometheus metrics, and graceful connection draining.
+
+- Architecture and acceptance plan: [`docs/platform-engineering-roadmap.md`](docs/platform-engineering-roadmap.md)
+- Docker and Kubernetes deployment: [`infra/README.md`](infra/README.md)
+- Reproducible k6 benchmark and results table: [`benchmarks/RESULTS.md`](benchmarks/RESULTS.md)
+
+Run the complete local platform with `docker compose -f docker-compose.platform.yml up --build -d`. Performance numbers belong in the results table only after the corresponding raw k6 output is published.
+
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18-brightgreen)](https://nodejs.org/)
 [![pnpm](https://img.shields.io/badge/pnpm-%3E%3D9-orange)](https://pnpm.io/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue)](https://www.typescriptlang.org/)
