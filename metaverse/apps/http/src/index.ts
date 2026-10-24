@@ -5,11 +5,16 @@ import { PORT, NODE_ENV } from "./constants";
 
 const app = express();
 
-// Allowed origins (no trailing slashes!)
-const allowedOrigins =
-  NODE_ENV === "production"
-    ? ["https://metaverse-frontend-6gjy.onrender.com"]
-    : ["http://localhost:5173", "http://localhost:8080"];
+const frontendUrl = process.env.FRONTEND_URL;
+let allowedOrigins: string[];
+if (NODE_ENV === "production") {
+  if (!frontendUrl) {
+    throw new Error("FRONTEND_URL is required in production");
+  }
+  allowedOrigins = [frontendUrl];
+} else {
+  allowedOrigins = ["http://localhost:5173", "http://localhost:8080"];
+}
 
 // CORS middleware
 app.use(

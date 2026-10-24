@@ -1,18 +1,23 @@
 services:
+  - type: keyvalue
+    name: metaverse-redis
+    plan: free
+
   # HTTP API Service
   - type: web
     name: metaverse-http-api
     runtime: node
-    plan: starter
+    plan: free
     buildCommand: cd metaverse && pnpm install && pnpm build
-    startCommand: cd metaverse && pnpm --filter http start
+    startCommand: cd metaverse && pnpm --filter @repo/database migrate && pnpm --filter http start
     envVars:
       - key: NODE_ENV
         value: production
       - key: PORT
         value: 3000
-      - key: JWT_PASSWORD
-        generateValue: true
+      - fromGroup: metaverse-auth
+      - key: FRONTEND_URL
+        value: https://metaverse-frontend.onrender.com
       - key: DATABASE_URL
         fromDatabase:
           name: metaverse-db
@@ -22,7 +27,7 @@ services:
   - type: web
     name: metaverse-websocket
     runtime: node
-    plan: starter
+    plan: free
     buildCommand: cd metaverse && pnpm install && pnpm build
     startCommand: cd metaverse && pnpm --filter ws start
     envVars:
@@ -30,18 +35,22 @@ services:
         value: production
       - key: PORT
         value: 8000
-      - key: JWT_PASSWORD
-        generateValue: true
+      - fromGroup: metaverse-auth
       - key: DATABASE_URL
         fromDatabase:
           name: metaverse-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: metaverse-redis
           property: connectionString
 
   # Frontend Service
   - type: web
     name: metaverse-frontend
     runtime: static
-    buildCommand: cd metaverse && pnpm install && pnpm --filter nexus-office-env build
+    buildCommand: cd metaverse && pnpm install && pnpm --filter ./apps/nexus-office-env build
     staticPublishPath: metaverse/apps/nexus-office-env/dist
     routes:
       - type: rewrite
@@ -49,11 +58,18 @@ services:
         destination: /index.html
     envVars:
       - key: VITE_API_URL
-        value: https://metaverse-http-api.onrender.com
+        value: https://metaverse-http-api.onrender.com/api/v1
       - key: VITE_WS_URL
         value: wss://metaverse-websocket.onrender.com
+
+envVarGroups:
+  - name: metaverse-auth
+    envVars:
+      - key: JWT_PASSWORD
+        generateValue: true
 
 databases:
   - name: metaverse-db
     databaseName: metaverse
     user: metaverse
+    plan: free
