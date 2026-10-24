@@ -2,6 +2,7 @@ services:
   - type: keyvalue
     name: metaverse-redis
     plan: free
+    ipAllowList: []
 
   # HTTP API Service
   - type: web
